@@ -1,9 +1,13 @@
 import sys
 sys.path.append("..")
 sys.path.append("../anomaly_detection/")
-from anomaly_detection.anomaly_detect_ts import anomaly_detect_ts, _detect_anoms
+
+from anomaly_detection.anomaly_detect_ts import _detect_anoms, anomaly_detect_ts,\
+    _get_data_tuple, _get_max_outliers, _get_max_anoms, _get_decomposed_data_tuple,\
+    _perform_threshold_filter, _get_plot_breaks, _get_only_last_results, _get_period
 
 import pandas as pd
+from pandas.core.series import Series
 import unittest
 
 class TestAnomalyDetection(unittest.TestCase):
@@ -17,7 +21,7 @@ class TestAnomalyDetection(unittest.TestCase):
         return pd.datetime.strptime(date, '%Y-%m-%d %H:%M:%S')
 
 
-    def test__detect_anoms(self):
+    def test_detect_anoms(self):
         shesd = _detect_anoms(self.data, k=0.02, alpha=0.05,
                                 num_obs_per_period=1440,
                                 use_decomp=True, use_esd=False,
@@ -119,3 +123,59 @@ class TestAnomalyDetection(unittest.TestCase):
             anomaly_detect_ts(['invalid'], max_anoms=0.02, piecewise_median_period_weeks=1,
                                       direction='both', threshold=None,
                                       only_last=None, longterm=False, plot=False)
+            
+    def test_get_data_tuple(self):
+        d_tuple = _get_data_tuple(self.data, 24, None)
+        raw_data = d_tuple[0]
+        period = d_tuple[1]
+        granularity = d_tuple[2]
+        
+        self.assertTrue(isinstance(raw_data, Series))  
+        self.assertTrue(isinstance(period, int))
+        self.assertTrue(isinstance(granularity, str))   
+           
+        self.assertEquals(24, period)
+        self.assertEquals('min', granularity)
+        self.assertEquals(14398, len(raw_data))
+        
+    def test_get_max_outliers(self):
+        self.assertEquals(719, _get_max_outliers(self.data, 0.05))
+    
+    def test_get_max_anoms(self):
+        max_anoms = _get_max_anoms(self.data, 0.1)
+        self.assertEquals(0.1, max_anoms)
+        
+    def test_get_decomposed_data_tuple(self):
+        data, smoothed_data = _get_decomposed_data_tuple(self.data, 1440)
+        self.assertTrue(isinstance(data, Series))
+        self.assertTrue(isinstance(smoothed_data, Series))
+        self.assertEquals(14398, len(data))
+        self.assertEquals(14398, len(smoothed_data))
+        
+    def test_perform_threshold_filter(self):
+        results = anomaly_detect_ts(self.data, max_anoms=0.02, direction='both',
+                                      only_last=None, plot=False)
+        periodic_max = self.data.resample('1D').max()
+        filtered_results = _perform_threshold_filter(results['anoms'], periodic_max, 'med_max')
+        self.assertTrue(isinstance(filtered_results, Series))
+        self.assertEquals(4, len(filtered_results))
+        
+    def test_get_plot_breaks(self):
+        self.assertEquals(36, _get_plot_breaks('day', 'day'))
+        self.assertEquals(12, _get_plot_breaks('min', 'day'))
+        self.assertEquals(3, _get_plot_breaks('min', 'min'))
+        
+    def test_get_only_last_results(self):
+        results = anomaly_detect_ts(self.data, max_anoms=0.02, direction='both', 
+                                    only_last=None, plot=False)
+
+        last_day = _get_only_last_results(self.data, results['anoms'], 'min', 'day')
+        last_hr = _get_only_last_results(self.data, results['anoms'], 'min', 'hr')
+        self.assertEquals(23, len(last_day))
+        self.assertEquals(3, len(last_hr))
+    
+    def test_get_period(self):
+        self.assertEquals(1440, _get_period(1440, None))
+        
+    def test_get_period_with_override(self):
+        self.assertEquals(720, _get_period(1440, 720))
