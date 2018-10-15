@@ -300,9 +300,15 @@ def _process_long_term_data(raw_data, data, period, granularity, piecewise_media
         end_date = start_date + datetime.timedelta(days=num_days_in_period)
         
         if end_date < data.index[-1]:
-            all_data.append(_execute_dataframe_function(lambda data: data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)], data, multithreaded))
+            if multithreaded:
+                all_data.append(_execute_dataframe_function(lambda data: data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)], data, multithreaded))
+            else:
+                all_data.append(_execute_dataframe_function(data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)], data, multithreaded))                
         else:
-            all_data.append(_execute_dataframe_function(lambda data: data.loc[lambda raw_data: raw_data.index >= data.index[-1] - datetime.timedelta(days=num_days_in_period)], data, multithreaded))
+            if multithreaded:
+                all_data.append(_execute_dataframe_function(lambda data: data.loc[lambda raw_data: raw_data.index >= data.index[-1] - datetime.timedelta(days=num_days_in_period)], data, multithreaded))
+            else:
+                all_data.append(_execute_dataframe_function(data.loc[lambda raw_data: raw_data.index >= data.index[-1] - datetime.timedelta(days=num_days_in_period)], data, multithreaded))                
     return all_data    
 
 '''
@@ -342,11 +348,24 @@ def _get_only_last_results(data, all_anoms, granularity, only_last, multithreade
         start_date = datetime.datetime.combine((data.index[-1] - datetime.timedelta(days=2)).date(), datetime.time.min)
         start_anoms = data.index[-1] - datetime.timedelta(hours=1)
 
+    x_subset_single_day = None
+
     # subset the last days worth of data
-    x_subset_single_day = _execute_dataframe_function(lambda data: data.loc[data.index > start_anoms], data, multithreaded)
+    if multithreaded:
+        x_subset_single_day = _execute_dataframe_function(lambda data: data.loc[data.index > start_anoms], data, multithreaded)
+    else:
+        x_subset_single_day = _execute_dataframe_function(data.loc[data.index > start_anoms], data, multithreaded)
+
     # When plotting anoms for the last day only we only show the previous weeks data
-    x_subset_week = _execute_dataframe_function(lambda data: data.loc[lambda df: (df.index <= start_anoms) & (df.index > start_date)], data, multithreaded)
-    return _execute_dataframe_function(lambda all_anoms: all_anoms.loc[all_anoms.index >= x_subset_single_day.index[0]], all_anoms, multithreaded)
+    if multithreaded:
+        x_subset_week = _execute_dataframe_function(lambda data: data.loc[lambda df: (df.index <= start_anoms) & (df.index > start_date)], data, multithreaded)
+    else:
+        x_subset_week = _execute_dataframe_function(data.loc[lambda df: (df.index <= start_anoms) & (df.index > start_date)], data, multithreaded)        
+
+    if multithreaded:
+        return _execute_dataframe_function(lambda all_anoms: all_anoms.loc[all_anoms.index >= x_subset_single_day.index[0]], all_anoms, multithreaded)
+    else:        
+        return _execute_dataframe_function(all_anoms.loc[all_anoms.index >= x_subset_single_day.index[0]], all_anoms, multithreaded)
 
 '''
 Generates the breaks used in plotting
@@ -385,7 +404,10 @@ def _perform_threshold_filter(anoms, periodic_max, threshold, multithreaded=Fals
     else:
         raise AttributeError('Invalid threshold, threshold options are None | med_max | p95 | p99')
 
-    return _execute_dataframe_function(lambda anoms: anoms.loc[anoms.values >= thresh], anoms, multithreaded)
+    if multithreaded:
+        return _execute_dataframe_function(lambda anoms: anoms.loc[anoms.values >= thresh], anoms, multithreaded)
+    else:
+        return _execute_dataframe_function(anoms.loc[anoms.values >= thresh], anoms, multithreaded) 
 
 '''
 Calculates the max_outliers for an input data set
@@ -459,7 +481,7 @@ def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only
     # Detect anomalies on all data (either entire data in one-pass, or in 2 week blocks if longterm=True)
     for series in all_data:
         shesd = _detect_anoms(series, k=max_anoms, alpha=alpha, num_obs_per_period=period, use_decomp=True, 
-                              use_esd=False, direction=direction, verbose=verbose)
+                              use_esd=False, direction=direction, verbose=verbose, multithreaded=multithreaded)
         shesd_anoms = shesd['anoms']
         shesd_stl = shesd['stl']
 
@@ -522,7 +544,7 @@ def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only
 #   A list containing the anomalies (anoms) and decomposition components (stl).
 
 def _detect_anoms(data, k=0.49, alpha=0.05, num_obs_per_period=None,
-                  use_decomp=True, use_esd=False, direction="pos", verbose=False):
+                  use_decomp=True, use_esd=False, direction="pos", verbose=False, multithreaded=False):
 
     # validation
     assert num_obs_per_period, "must supply period length for time series decomposition"
