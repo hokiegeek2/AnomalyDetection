@@ -1,4 +1,5 @@
 import sys
+from pandas.tests.io.parser import multithread
 sys.path.append("..")
 sys.path.append("../anomaly_detection/")
 
@@ -73,13 +74,13 @@ class TestAnomalyDetection(unittest.TestCase):
     def test_anomaly_detect_ts_last_only_day(self):
         results = anomaly_detect_ts(self.data, max_anoms=0.02,
                                       direction='both',
-                                      only_last='day', plot=False)
+                                      only_last='day', plot=False, multithreaded=True)
         self.assertEquals(23, len(results['anoms']))
 
     def test_anomaly_detect_ts_last_only_hr(self):
         results = anomaly_detect_ts(self.data, max_anoms=0.02,
                                       direction='both',
-                                      only_last='hr', plot=False)
+                                      only_last='hr', plot=False, multithreaded=True)
         self.assertEquals(3, len(results['anoms']))
 
     def test_anomaly_detect_ts_pos_only(self):
@@ -97,13 +98,13 @@ class TestAnomalyDetection(unittest.TestCase):
     def test_anomaly_detect_ts_med_max_threshold(self):
         results = anomaly_detect_ts(self.data, max_anoms=0.02,
                                       direction='both', threshold='med_max',
-                                      only_last=None, plot=False)
+                                      only_last=None, plot=False, multithreaded=True)
         self.assertEquals(4, len(results['anoms']))
 
     def test_anomaly_detect_ts_longterm(self):
         results = anomaly_detect_ts(self.data, max_anoms=0.02,
                                       direction='both', threshold=None,
-                                      only_last=None, longterm=True)
+                                      only_last=None, longterm=True, multithreaded=True)
         self.assertEquals(132, len(results['anoms']))
 
     def test_anomaly_detect_ts_piecewise_median_period_weeks(self):
@@ -154,10 +155,10 @@ class TestAnomalyDetection(unittest.TestCase):
         
     def test_perform_threshold_filter(self):
         results = anomaly_detect_ts(self.data, max_anoms=0.02, direction='both',
-                                      only_last=None, plot=False)
+                                      only_last=None, plot=False, multithreaded=True)
         periodic_max = self.data.resample('1D').max()
-        filtered_results = _perform_threshold_filter(results['anoms'], periodic_max, 'med_max')
-        self.assertTrue(isinstance(filtered_results, Series))
+        filtered_results = _perform_threshold_filter(results['anoms'], periodic_max, 'med_max', multithreaded=True)
+        self.assertTrue(isinstance(filtered_results, pd.Series))
         self.assertEquals(4, len(filtered_results))
         
     def test_get_plot_breaks(self):
@@ -167,10 +168,10 @@ class TestAnomalyDetection(unittest.TestCase):
         
     def test_get_only_last_results(self):
         results = anomaly_detect_ts(self.data, max_anoms=0.02, direction='both', 
-                                    only_last=None, plot=False)
+                                    only_last=None, plot=False, multithreaded=True)
 
-        last_day = _get_only_last_results(self.data, results['anoms'], 'min', 'day')
-        last_hr = _get_only_last_results(self.data, results['anoms'], 'min', 'hr')
+        last_day = _get_only_last_results(self.data, results['anoms'], 'min', 'day', multithreaded=True)
+        last_hr = _get_only_last_results(self.data, results['anoms'], 'min', 'hr', multithreaded=True)
         self.assertEquals(23, len(last_day))
         self.assertEquals(3, len(last_hr))
     

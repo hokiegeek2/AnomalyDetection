@@ -286,13 +286,11 @@ Processes result set when longterm is set to true
   piecewise_median_period_weeks : int
     used to determine days and observations per period
 '''    
-def _process_long_term_data(raw_data, data, period, granularity, piecewise_median_period_weeks):
+def _process_long_term_data(raw_data, data, period, granularity, piecewise_median_period_weeks, multithreaded=False):
     # Pre-allocate list with size equal to the number of piecewise_median_period_weeks chunks in x + any left over chunk
     # handle edge cases for daily and single column data period lengths
     num_obs_in_period = period * piecewise_median_period_weeks + 1 if granularity == 'day' else period * 7 * piecewise_median_period_weeks
     num_days_in_period = (7 * piecewise_median_period_weeks) + 1 if granularity == 'day' else (7 * piecewise_median_period_weeks)
-
-    dask_df = _get_dask_dataframe(data)
    
     all_data = []
     # Subset x into piecewise_median_period_weeks chunks
@@ -302,19 +300,23 @@ def _process_long_term_data(raw_data, data, period, granularity, piecewise_media
         end_date = start_date + datetime.timedelta(days=num_days_in_period)
         
         if end_date < data.index[-1]:
-            all_data.append(_execute_dask_task(lambda data: data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)], dask_df))
+            all_data.append(_execute_dataframe_function(lambda data: data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)], data, multithreaded))
         else:
-            all_data.append(_execute_dask_task(lambda data: data.loc[lambda raw_data: raw_data.index >= data.index[-1] - datetime.timedelta(days=num_days_in_period)], dask_df))
+            all_data.append(_execute_dataframe_function(lambda data: data.loc[lambda raw_data: raw_data.index >= data.index[-1] - datetime.timedelta(days=num_days_in_period)], data, multithreaded))
     return all_data    
 
-def _execute_dask_task(function, dask_df):
-    return dask_df.map_partitions(function).compute()
+'''
+Parallelizes the function execution by passing the function and Dask DataFrame to the Dask DataFrame.map_partitions function
+'''
+def _execute_dask_function(d_function, dask_df):
+    return dask_df.map_partitions(d_function).compute()
 
-def _execute_dataframe_function(function, data, dask_df=None):
-    if dask_df is None:
-        return function
+def _execute_dataframe_function(d_function, df, parallelize=False):
+    if parallelize:
+        dask_df = _get_dask_dataframe(df)
+        return _execute_dask_function(d_function, dask_df)
     else:
-        return dask_df.map_partitions(lambda data: function).compute()
+        return d_function
 
 def _get_dask_dataframe(df):
     return ddf.from_pandas(df, npartitions=cpu_count())
@@ -331,7 +333,7 @@ Returns the results from the last day or hour only
   only_last : string day | hr
     The subset of anomalies to be returned
 '''
-def _get_only_last_results(data, all_anoms, granularity, only_last):
+def _get_only_last_results(data, all_anoms, granularity, only_last, multithreaded=False):
     start_date = data.index[-1] - datetime.timedelta(days=7)
     start_anoms = data.index[-1] - datetime.timedelta(days=1)
 
@@ -341,10 +343,10 @@ def _get_only_last_results(data, all_anoms, granularity, only_last):
         start_anoms = data.index[-1] - datetime.timedelta(hours=1)
 
     # subset the last days worth of data
-    x_subset_single_day = data.loc[data.index > start_anoms]
+    x_subset_single_day = _execute_dataframe_function(lambda data: data.loc[data.index > start_anoms], data, multithreaded)
     # When plotting anoms for the last day only we only show the previous weeks data
-    x_subset_week = data.loc[lambda df: (df.index <= start_anoms) & (df.index > start_date)]
-    return all_anoms.loc[all_anoms.index >= x_subset_single_day.index[0]]
+    x_subset_week = _execute_dataframe_function(lambda data: data.loc[lambda df: (df.index <= start_anoms) & (df.index > start_date)], data, multithreaded)
+    return _execute_dataframe_function(lambda all_anoms: all_anoms.loc[all_anoms.index >= x_subset_single_day.index[0]], all_anoms, multithreaded)
 
 '''
 Generates the breaks used in plotting
@@ -373,7 +375,7 @@ Filters the list of anomalies per the threshold filter
   threshold : med_max" | "p95" | "p99"
     user-specified threshold value used to filter anoms
 '''
-def _perform_threshold_filter(anoms, periodic_max, threshold):
+def _perform_threshold_filter(anoms, periodic_max, threshold, multithreaded=False):
     if threshold == 'med_max':
         thresh = periodic_max.median()
     elif threshold == 'p95':
@@ -383,7 +385,7 @@ def _perform_threshold_filter(anoms, periodic_max, threshold):
     else:
         raise AttributeError('Invalid threshold, threshold options are None | med_max | p95 | p99')
 
-    return anoms.loc[anoms.values >= thresh]
+    return _execute_dataframe_function(lambda anoms: anoms.loc[anoms.values >= thresh], anoms, multithreaded)
 
 '''
 Calculates the max_outliers for an input data set
@@ -447,7 +449,7 @@ def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only
     
     # If longterm is enabled, break the data into subset data frames and store in all_data
     if longterm:
-        all_data = _process_long_term_data(raw_data, data, period, granularity, piecewise_median_period_weeks)
+        all_data = _process_long_term_data(raw_data, data, period, granularity, piecewise_median_period_weeks, multithreaded)
     else:
         all_data = [data]
 
@@ -468,7 +470,7 @@ def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only
         if threshold:
             # Calculate daily max values
             periodic_max = data.resample('1D').max()
-            anoms = _perform_threshold_filter(anoms, periodic_max, threshold)
+            anoms = _perform_threshold_filter(anoms, periodic_max, threshold, multithreaded)
 
         all_anoms = all_anoms.append(anoms)
         seasonal_plus_trend = seasonal_plus_trend.append(shesd_stl)
@@ -479,7 +481,7 @@ def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only
 
     # If only_last is specified, create a subset of the data corresponding to the most recent day or hour
     if only_last:
-        all_anoms = _get_only_last_results(data, all_anoms, granularity, only_last)
+        all_anoms = _get_only_last_results(data, all_anoms, granularity, only_last, multithreaded)
  
     # If there are no anoms, log it and return an empty anoms result
     if all_anoms.empty:
