@@ -143,7 +143,6 @@ import scipy as sp
 import pandas as pd
 from multiprocessing import cpu_count
 from dask import dataframe as ddf
-from dask.dataframe.core import Series as DaskSeries
 
 import datetime
 import statsmodels.api as sm
@@ -262,7 +261,8 @@ Returns the time difference used to determine granularity and to generate the pe
     
 '''
 def _get_time_diff(data):
-    return data.index[1] - data.index[0]
+    sub_series = data.head(2)
+    return sub_series.index[1] - sub_series.index[0]
 
 '''
 Returns the max_anoms parameter used for S-H-ESD time series anomaly detection
@@ -301,6 +301,9 @@ def _process_long_term_data(raw_data, data, period, granularity, piecewise_media
     num_days_in_period = (7 * piecewise_median_period_weeks) + 1 if granularity == 'day' else (7 * piecewise_median_period_weeks)
    
     all_data = []
+    
+    dask_series = _get_dask_series(data)
+    
     # Subset x into piecewise_median_period_weeks chunks
     for i in range(1, data.size + 1, num_obs_in_period):
         start_date = data.index[i]
@@ -309,14 +312,14 @@ def _process_long_term_data(raw_data, data, period, granularity, piecewise_media
         
         if end_date < data.index[-1]:
             if multithreaded:
-                all_data.append(_execute_series_lambda_function(lambda data: data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)], data, multithreaded))
+                all_data.append(_execute_series_lambda_function(lambda data: data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)], dask_series))
             else:
-                all_data.append(_execute_series_lambda_function(data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)], data, multithreaded))                
+                all_data.append(_execute_series_lambda_function(data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)]))                
         else:
             if multithreaded:
-                all_data.append(_execute_series_lambda_function(lambda data: data.loc[lambda raw_data: raw_data.index >= data.index[-1] - datetime.timedelta(days=num_days_in_period)], data, multithreaded))
+                all_data.append(_execute_series_lambda_function(lambda data: data.loc[lambda raw_data: raw_data.index >= data.index[-1] - datetime.timedelta(days=num_days_in_period)], dask_series))
             else:
-                all_data.append(_execute_series_lambda_function(data.loc[lambda raw_data: raw_data.index >= data.index[-1] - datetime.timedelta(days=num_days_in_period)], data, multithreaded))                
+                all_data.append(_execute_series_lambda_function(data.loc[lambda raw_data: raw_data.index >= data.index[-1] - datetime.timedelta(days=num_days_in_period)]))                
     return all_data    
 
 '''
@@ -341,10 +344,9 @@ Executes a function on a Pandas or Dask Series object
   multithreaded : bool True | False
     indicates whether in standard or multithreaded mode
 '''
-def _execute_series_lambda_function(d_function, series_object, multithreaded=False):
-    if multithreaded:
-        dask_df = _get_dask_series(series_object)
-        return _execute_dask_lambda_method(d_function, dask_df)
+def _execute_series_lambda_function(d_function, dask_series_object=None):
+    if dask_series_object is not None:
+        return _execute_dask_lambda_method(d_function, dask_series_object)
     else:
         return d_function
 
@@ -383,22 +385,28 @@ def _get_only_last_results(data, all_anoms, granularity, only_last, multithreade
 
     x_subset_single_day = None
 
+    data_series = None
+    anom_series = None
+    if multithreaded:
+        data_series = _get_dask_series(data)
+        anom_series = _get_dask_series(all_anoms)
+
     # subset the last days worth of data
     if multithreaded:
-        x_subset_single_day = _execute_series_lambda_function(lambda data: data.loc[data.index > start_anoms], data, multithreaded)
+        x_subset_single_day = _execute_series_lambda_function(lambda data: data.loc[data.index > start_anoms], data_series)
     else:
-        x_subset_single_day = _execute_series_lambda_function(data.loc[data.index > start_anoms], data, multithreaded)
+        x_subset_single_day = _execute_series_lambda_function(data.loc[data.index > start_anoms])
 
     # When plotting anoms for the last day only we only show the previous weeks data
     if multithreaded:
-        x_subset_week = _execute_series_lambda_function(lambda data: data.loc[lambda df: (df.index <= start_anoms) & (df.index > start_date)], data, multithreaded)
+        x_subset_week = _execute_series_lambda_function(lambda data: data.loc[lambda df: (df.index <= start_anoms) & (df.index > start_date)], data_series)
     else:
-        x_subset_week = _execute_series_lambda_function(data.loc[lambda df: (df.index <= start_anoms) & (df.index > start_date)], data, multithreaded)        
+        x_subset_week = _execute_series_lambda_function(data.loc[lambda df: (df.index <= start_anoms) & (df.index > start_date)])        
 
     if multithreaded:
-        return _execute_series_lambda_function(lambda all_anoms: all_anoms.loc[all_anoms.index >= x_subset_single_day.index[0]], all_anoms, multithreaded)
+        return _execute_series_lambda_function(lambda all_anoms: all_anoms.loc[all_anoms.index >= x_subset_single_day.index[0]], anom_series)
     else:        
-        return _execute_series_lambda_function(all_anoms.loc[all_anoms.index >= x_subset_single_day.index[0]], all_anoms, multithreaded)
+        return _execute_series_lambda_function(all_anoms.loc[all_anoms.index >= x_subset_single_day.index[0]])
 
 '''
 Generates the breaks used in plotting
@@ -441,9 +449,9 @@ def _perform_threshold_filter(anoms, periodic_max, threshold, multithreaded=Fals
         raise AttributeError('Invalid threshold, threshold options are None | med_max | p95 | p99')
 
     if multithreaded:
-        return _execute_series_lambda_function(lambda anoms: anoms.loc[anoms.values >= thresh], anoms, multithreaded)
+        return _execute_series_lambda_function(lambda anoms: anoms.loc[anoms.values >= thresh], _get_dask_series(anoms))
     else:
-        return _execute_series_lambda_function(anoms.loc[anoms.values >= thresh], anoms, multithreaded) 
+        return _execute_series_lambda_function(anoms.loc[anoms.values >= thresh]) 
 
 '''
 Calculates the max_outliers for an input data set
