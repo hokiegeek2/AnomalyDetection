@@ -302,7 +302,8 @@ def _process_long_term_data(raw_data, data, period, granularity, piecewise_media
    
     all_data = []
     
-    dask_series = _get_dask_series(data)
+    if multithreaded:
+        dask_series = _get_dask_series(data)
     
     # Subset x into piecewise_median_period_weeks chunks
     for i in range(1, data.size + 1, num_obs_in_period):
@@ -339,10 +340,9 @@ Executes a function on a Pandas or Dask Series object
 
   d_function : Function
     the lambda function to execute
-  series_object : Either Pandas or Dask Series
-    the Series to compute the lambda function for
-  multithreaded : bool True | False
-    indicates whether in standard or multithreaded mode
+  dask_series_object : Dask Series 
+    the Series to compute the lambda function for if in multithreaded mode
+    
 '''
 def _execute_series_lambda_function(d_function, dask_series_object=None):
     if dask_series_object is not None:
@@ -385,8 +385,6 @@ def _get_only_last_results(data, all_anoms, granularity, only_last, multithreade
 
     x_subset_single_day = None
 
-    data_series = None
-    anom_series = None
     if multithreaded:
         data_series = _get_dask_series(data)
         anom_series = _get_dask_series(all_anoms)
