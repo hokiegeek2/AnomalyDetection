@@ -138,6 +138,30 @@ class TestAnomalyDetection(unittest.TestCase):
                                       only_last=None, plot=False, multithreaded=True)
         self.assertEquals(4, len(results['anoms']))
 
+    def test_anomaly_detect_ts_p95_threshold(self):
+        results = anomaly_detect_ts(self.data, max_anoms=0.02,
+                                      direction='both', threshold='p95',
+                                      only_last=None, plot=False)
+        self.assertEquals(1, len(results['anoms']))
+
+    def test_anomaly_detect_ts_p95_threshold_multithreaded(self):
+        results = anomaly_detect_ts(self.data, max_anoms=0.02,
+                                      direction='both', threshold='p95',
+                                      only_last=None, plot=False, multithreaded=True)
+        self.assertEquals(1, len(results['anoms']))
+
+    def test_anomaly_detect_ts_p99_threshold(self):
+        results = anomaly_detect_ts(self.data, max_anoms=0.02,
+                                      direction='both', threshold='p99',
+                                      only_last=None, plot=False)
+        self.assertEquals(1, len(results['anoms']))
+
+    def test_anomaly_detect_ts_p99_threshold_multithreaded(self):
+        results = anomaly_detect_ts(self.data, max_anoms=0.02,
+                                      direction='both', threshold='p99',
+                                      only_last=None, plot=False, multithreaded=True)
+        self.assertEquals(1, len(results['anoms']))
+
     def test_anomaly_detect_ts_longterm(self):
         results = anomaly_detect_ts(self.data, max_anoms=0.02,
                                       direction='both', threshold=None,
@@ -211,7 +235,7 @@ class TestAnomalyDetection(unittest.TestCase):
         
     def test_perform_threshold_filter(self):
         results = anomaly_detect_ts(self.data, max_anoms=0.02, direction='both',
-                                      only_last=None, plot=False, multithreaded=True)
+                                      only_last=None)
         periodic_max = self.data.resample('1D').max()
         filtered_results = _perform_threshold_filter(results['anoms'], periodic_max, 'med_max')
         self.assertTrue(isinstance(filtered_results, pd.Series))

@@ -155,8 +155,9 @@ Raises ValueError with detailed error message if one of the two situations is tr
   1. calculated granularity is less than minute (sec or ms)
   2. resampling is not enabled for situations where calculated granularity < min
   
-  level : String
+  level : string
     the granularity that is below the min threshold
+    
 '''
 def _handle_granularity_error(level):
     e_message = '%s granularity is not supported. Ensure granularity => minute or enable resampling' % level
@@ -165,8 +166,8 @@ def _handle_granularity_error(level):
 '''
 Resamples a data set to the min level of granularity
 
-  data : pandas DataFrame
-    input Pandas DataFrame
+  data : Pandas or Dask Series
+    input data set of (timestamp, float) in the form of a Series data structure
   period_override : int 
     indicates whether resampling should be done with overridden value instead of min (1440)
     
@@ -191,10 +192,12 @@ def _override_period(period_override):
 
 '''
 Returns the generated period or overridden period depending upon the period_arg
+
   gran_period : int
     the period generated from the granularity
-  period_arg : the period override value that is either None or an int
+  period_arg : int
     the period to override the period generated from granularity
+    
 '''
 def _get_period(gran_period, period_arg=None):
     if _override_period(period_arg):
@@ -205,11 +208,11 @@ def _get_period(gran_period, period_arg=None):
 '''
 Generates a tuple consisting of processed input data, a calculated or overridden period, and granularity
 
-  raw_data : pandas DataFrame
-    input data
+  raw_data : Pandas or Dask Series
+    input data set of (timestamp, float) in the form of a Series data structure
   period_override : int
     period specified in the anomaly_detect_ts parameter list, None if it is not provided
-  resampling : True | False
+  resampling : bool True | False
     indicates whether the raw_data should be resampled to a supporting granularity, if applicable
 '''
 def _get_data_tuple(raw_data, period_override, resampling=False):    
@@ -252,11 +255,11 @@ def _get_data_tuple(raw_data, period_override, resampling=False):
     return (data, period, granularity)      
 
 '''
-Generates the time difference used to determine granularity and 
-to generate the period
+Returns the time difference used to determine granularity and to generate the period
 
-  data : pandas DataFrame
-    composed of input data
+  data : Pandas or Dask Series
+    input data set of (timestamp, float) in the form of a Series data structure
+    
 '''
 def _get_time_diff(data):
     return data.index[1] - data.index[0]
@@ -264,10 +267,11 @@ def _get_time_diff(data):
 '''
 Returns the max_anoms parameter used for S-H-ESD time series anomaly detection
 
-  data : pandas DataFrame
-    composed of input data 
+  data : Pandas or Dask Series
+    input data set of (timestamp, float) in the form of a Series data structure
   max_anoms : float
     the input max_anoms
+    
 '''
 def _get_max_anoms(data, max_anoms):
     if max_anoms == 0:
@@ -276,15 +280,19 @@ def _get_max_anoms(data, max_anoms):
 
 '''
 Processes result set when longterm is set to true
-
-  data : list of floats
-    the result set of anoms
+  
+  raw_data : Pandas or Dask Series
+    input data set of (timestamp, float) in the form of a Series data structure
+  data : Series
+    processed data set of (timestamp, float) in the form of a Series data structure
   period : int
     the calculated or overridden period value
   granularity : string
     the calculated or overridden granularity
   piecewise_median_period_weeks : int
     used to determine days and observations per period
+  multithreaded : bool
+    indicates if in single or multithreaded mode
 '''    
 def _process_long_term_data(raw_data, data, period, granularity, piecewise_median_period_weeks, multithreaded=False):
     # Pre-allocate list with size equal to the number of piecewise_median_period_weeks chunks in x + any left over chunk
@@ -301,43 +309,68 @@ def _process_long_term_data(raw_data, data, period, granularity, piecewise_media
         
         if end_date < data.index[-1]:
             if multithreaded:
-                all_data.append(_execute_dataframe_function(lambda data: data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)], data, multithreaded))
+                all_data.append(_execute_series_lambda_function(lambda data: data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)], data, multithreaded))
             else:
-                all_data.append(_execute_dataframe_function(data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)], data, multithreaded))                
+                all_data.append(_execute_series_lambda_function(data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)], data, multithreaded))                
         else:
             if multithreaded:
-                all_data.append(_execute_dataframe_function(lambda data: data.loc[lambda raw_data: raw_data.index >= data.index[-1] - datetime.timedelta(days=num_days_in_period)], data, multithreaded))
+                all_data.append(_execute_series_lambda_function(lambda data: data.loc[lambda raw_data: raw_data.index >= data.index[-1] - datetime.timedelta(days=num_days_in_period)], data, multithreaded))
             else:
-                all_data.append(_execute_dataframe_function(data.loc[lambda raw_data: raw_data.index >= data.index[-1] - datetime.timedelta(days=num_days_in_period)], data, multithreaded))                
+                all_data.append(_execute_series_lambda_function(data.loc[lambda raw_data: raw_data.index >= data.index[-1] - datetime.timedelta(days=num_days_in_period)], data, multithreaded))                
     return all_data    
 
 '''
-Parallelizes the function execution by passing the function and Dask DataFrame to the Dask DataFrame.map_partitions function
-'''
-def _execute_dask_function(d_function, dask_df):
-    return dask_df.map_partitions(d_function).compute()
+Executes the function execution in multithreaded fashion by passing the function and 
+Dask DataFrame to the Dask DataFrame.map_partitions function
 
-def _execute_dataframe_function(d_function, df, parallelize=False):
-    if parallelize:
-        dask_df = _get_dask_dataframe(df)
-        return _execute_dask_function(d_function, dask_df)
+  d_function : Function
+    the lambda function to execute
+  dask_series : Dask Series
+    the Dask Series to compute the lambda function for
+'''
+def _execute_dask_lambda_method(d_function, dask_series):
+    return dask_series.map_partitions(d_function).compute()
+
+'''
+Executes a function on a Pandas or Dask Series object
+
+  d_function : Function
+    the lambda function to execute
+  series_object : Either Pandas or Dask Series
+    the Series to compute the lambda function for
+  multithreaded : bool True | False
+    indicates whether in standard or multithreaded mode
+'''
+def _execute_series_lambda_function(d_function, series_object, multithreaded=False):
+    if multithreaded:
+        dask_df = _get_dask_series(series_object)
+        return _execute_dask_lambda_method(d_function, dask_df)
     else:
         return d_function
 
-def _get_dask_dataframe(df):
-    return ddf.from_pandas(df, npartitions=cpu_count())
+'''
+Returns a Dask Series object from the Pandas Series object
+
+  p_series : pandas.core.Series
+    input data set of (timestamp, float) in the form of a Pandas Series data structure
+    
+'''
+def _get_dask_series(p_series):
+    return ddf.from_pandas(p_series, npartitions=cpu_count())
 
 '''
 Returns the results from the last day or hour only
 
-  data : pandas DataFrame
-    input data set
-  all_anoms : list of floats
-    all of the anomalies returned by the algorithm
+  data : Pandas or Dask Series
+    input data set of (timestamp, float) in the form of a Series data structure
+  all_anoms : Series
+    all of the timestamp-anomaly tuples returned by the algorithm
   granularity : string day | hr | min
     The supported granularity value
   only_last : string day | hr
     The subset of anomalies to be returned
+  multithreaded : bool True | False
+    indicates whether in standard or multithreaded mode
 '''
 def _get_only_last_results(data, all_anoms, granularity, only_last, multithreaded=False):
     start_date = data.index[-1] - datetime.timedelta(days=7)
@@ -352,20 +385,20 @@ def _get_only_last_results(data, all_anoms, granularity, only_last, multithreade
 
     # subset the last days worth of data
     if multithreaded:
-        x_subset_single_day = _execute_dataframe_function(lambda data: data.loc[data.index > start_anoms], data, multithreaded)
+        x_subset_single_day = _execute_series_lambda_function(lambda data: data.loc[data.index > start_anoms], data, multithreaded)
     else:
-        x_subset_single_day = _execute_dataframe_function(data.loc[data.index > start_anoms], data, multithreaded)
+        x_subset_single_day = _execute_series_lambda_function(data.loc[data.index > start_anoms], data, multithreaded)
 
     # When plotting anoms for the last day only we only show the previous weeks data
     if multithreaded:
-        x_subset_week = _execute_dataframe_function(lambda data: data.loc[lambda df: (df.index <= start_anoms) & (df.index > start_date)], data, multithreaded)
+        x_subset_week = _execute_series_lambda_function(lambda data: data.loc[lambda df: (df.index <= start_anoms) & (df.index > start_date)], data, multithreaded)
     else:
-        x_subset_week = _execute_dataframe_function(data.loc[lambda df: (df.index <= start_anoms) & (df.index > start_date)], data, multithreaded)        
+        x_subset_week = _execute_series_lambda_function(data.loc[lambda df: (df.index <= start_anoms) & (df.index > start_date)], data, multithreaded)        
 
     if multithreaded:
-        return _execute_dataframe_function(lambda all_anoms: all_anoms.loc[all_anoms.index >= x_subset_single_day.index[0]], all_anoms, multithreaded)
+        return _execute_series_lambda_function(lambda all_anoms: all_anoms.loc[all_anoms.index >= x_subset_single_day.index[0]], all_anoms, multithreaded)
     else:        
-        return _execute_dataframe_function(all_anoms.loc[all_anoms.index >= x_subset_single_day.index[0]], all_anoms, multithreaded)
+        return _execute_series_lambda_function(all_anoms.loc[all_anoms.index >= x_subset_single_day.index[0]], all_anoms, multithreaded)
 
 '''
 Generates the breaks used in plotting
@@ -374,6 +407,7 @@ Generates the breaks used in plotting
     the supported granularity value
   only_last : True | False
     indicates whether only the last day or hour is returned and to be plotted
+    
 '''
 def _get_plot_breaks(granularity, only_last):
     if granularity == 'day':
@@ -387,12 +421,14 @@ def _get_plot_breaks(granularity, only_last):
 '''
 Filters the list of anomalies per the threshold filter
 
-  anoms : list of floats
-    the anoms returned by the algorithm
-  periodic_max : float
+  anoms : Pandas or Dask Series
+    the anoms returned by the algorithm in the form of a (timestamp, float) Series data structure
+  periodic_max : Pandas or Dask Series
     calculated daily max value
-  threshold : med_max" | "p95" | "p99"
+  threshold : str med_max | p95 | p99
     user-specified threshold value used to filter anoms
+  multithreaded : bool True | False
+    indicates whether in standard or multithreaded mode
 '''
 def _perform_threshold_filter(anoms, periodic_max, threshold, multithreaded=False):
     if threshold == 'med_max':
@@ -405,17 +441,18 @@ def _perform_threshold_filter(anoms, periodic_max, threshold, multithreaded=Fals
         raise AttributeError('Invalid threshold, threshold options are None | med_max | p95 | p99')
 
     if multithreaded:
-        return _execute_dataframe_function(lambda anoms: anoms.loc[anoms.values >= thresh], anoms, multithreaded)
+        return _execute_series_lambda_function(lambda anoms: anoms.loc[anoms.values >= thresh], anoms, multithreaded)
     else:
-        return _execute_dataframe_function(anoms.loc[anoms.values >= thresh], anoms, multithreaded) 
+        return _execute_series_lambda_function(anoms.loc[anoms.values >= thresh], anoms, multithreaded) 
 
 '''
 Calculates the max_outliers for an input data set
 
-  data : pandas DataFrame
-    the input data set
+  data : Pandas or Dask Series
+    the input data set in the form of a Series data structure
   max_percent_anomalies : float
     the input maximum number of anomalies per percent of data set values
+    
 '''
 def _get_max_outliers(data, max_percent_anomalies):
     max_outliers = int(np.trunc(data.size * max_percent_anomalies))
@@ -425,10 +462,11 @@ def _get_max_outliers(data, max_percent_anomalies):
 '''
 Returns a tuple consisting of two versions of the input data set: seasonally-decomposed and smoothed
 
-  data : pandas DataFrame
-    the input data set
+  data : Pandas or Dask Series
+    the input data set in the form of a Series data structure
   num_obs_per_period : int
     the number of observations in each period
+    
 '''
 def _get_decomposed_data_tuple(data, num_obs_per_period):
     decomposed = sm.tsa.seasonal_decompose(data, freq=num_obs_per_period, two_sided=False)
@@ -444,7 +482,7 @@ def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only
     if verbose:
         logging.info("Validating input parameters")
     # validation
-    assert isinstance(raw_data, pd.Series), 'Data must be a series(Pandas.Series)'
+    assert isinstance(raw_data, pd.Series) or isinstance(raw_data,ddf.Series), 'Data must be a Pandas or Dask Series'
     assert raw_data.values.dtype in [int, float], 'Values of the series must be number'
     assert raw_data.index.dtype == np.dtype('datetime64[ns]'), 'Index of the series must be datetime'
     assert max_anoms <= 0.49 and max_anoms >= 0, 'max_anoms must be non-negative and less than 50% '
