@@ -293,6 +293,7 @@ Processes result set when longterm is set to true
     used to determine days and observations per period
   multithreaded : bool
     indicates if in single or multithreaded mode
+    
 '''    
 def _process_long_term_data(raw_data, a_series, period, granularity, piecewise_median_period_weeks, multithreaded=False):
     # Pre-allocate list with size equal to the number of piecewise_median_period_weeks chunks in x + any left over chunk
@@ -328,6 +329,7 @@ Dask DataFrame to the Dask DataFrame.map_partitions function
     the lambda function to execute
   dask_series : Dask Series
     the Dask Series to compute the lambda function for
+    
 '''
 def _execute_dask_lambda_method(d_function, dask_series):
     return dask_series.map_partitions(d_function).compute()
@@ -361,7 +363,7 @@ def _get_dask_series(p_series):
 Returns the results from the last day or hour only
 
   a_series : AnomalySeries
-    input data set of (timestamp, float) in the form of a Series data structure
+    AnomalyDetection object encapsulating Pandas Series and optionally Dask Series objects
   all_anoms : Series
     all of the timestamp-anomaly tuples returned by the algorithm
   granularity : string day | hr | min
@@ -370,6 +372,7 @@ Returns the results from the last day or hour only
     The subset of anomalies to be returned
   multithreaded : bool True | False
     indicates whether in standard or multithreaded mode
+    
 '''
 def _get_only_last_results(a_series, all_anoms, granularity, only_last, multithreaded=False):
     start_date = a_series.pandas_series.index[-1] - datetime.timedelta(days=7)
@@ -426,12 +429,13 @@ Filters the list of anomalies per the threshold filter
 
   result_series : AnomalyResultSeries
     encapsulates the anoms returned by the algorithm in the form of Pandas Series and, optionally, Dask Series objects
-  periodic_max : Pandas or Dask Series
+  periodic_max : Pandas Series
     calculated daily max value
   threshold : str med_max | p95 | p99
     user-specified threshold value used to filter anoms
   multithreaded : bool True | False
     indicates whether in standard or multithreaded mode
+    
 '''
 def _perform_threshold_filter(result_series, periodic_max, threshold, multithreaded=False):
     if threshold == 'med_max':
@@ -451,15 +455,16 @@ def _perform_threshold_filter(result_series, periodic_max, threshold, multithrea
 '''
 Calculates the max_outliers for an input data set
 
-  data : Pandas or Dask Series
-    the input data set in the form of a Series data structure
+  a_series : AnomalySeries
+    AnomalyDetection object encapsulating Pandas Series and optionally Dask Series objects
   max_percent_anomalies : float
     the input maximum number of anomalies per percent of data set values
     
 '''
-def _get_max_outliers(data, max_percent_anomalies):
-    max_outliers = int(np.trunc(data.size * max_percent_anomalies))
-    assert max_outliers, 'With longterm=True, AnomalyDetection splits the data into 2 week periods by default. You have {0} observations in a period, which is too few. Set a higher piecewise_median_period_weeks.'.format(data.size)
+def _get_max_outliers(a_series, max_percent_anomalies):
+    data_size = a_series.size()
+    max_outliers = int(np.trunc(data_size * max_percent_anomalies))
+    assert max_outliers, 'With longterm=True, AnomalyDetection splits the data into 2 week periods by default. You have {0} observations in a period, which is too few. Set a higher piecewise_median_period_weeks.'.format(data_size)
     return max_outliers
 
 '''
@@ -483,6 +488,7 @@ Returns an instance of the AnomalySeries container object
     the input Pandas Series object passedc into the anomnaly_detect_ts method
   multithreaded : bool
     the Dask Series object will be None if multithreaded=False
+    
 '''
 def _get_anomaly_series(pandas_series, multithreaded=False):
     if multithreaded:
@@ -496,22 +502,13 @@ Returns an instance of the AnomalyResultSeries container object
     the result Pandas Series object
   multithreaded : bool
     the Dask Series object will be None if multithreaded=False
+    
 '''
 def _get_anomaly_result_series(pandas_series, multithreaded=False):
     if multithreaded:
         return AnomalySeries(pandas_series, _get_dask_series(pandas_series))
     else:
         return AnomalySeries(pandas_series)
-
-'''
-
-'''
-def _get_periodic_max(a_series, multithreaded=False):
-    if multithreaded:
-        return a_series.dask_series.resample('1D').max().compute()
-    else:
-        return a_series.pandas_series.resample('1D').max()
-    
 
 def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only_last=None,
                       threshold=None, e_value=False, longterm=False, piecewise_median_period_weeks=2,
@@ -572,10 +569,7 @@ def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only
         # Filter the anomalies using one of the thresholding functions if applicable
         if threshold:
             # Calculate daily max values
-            if multithreaded:
-                periodic_max = _get_periodic_max(a_series, multithreaded)  
-            else:
-                periodic_max = data.resample('1D').max()      
+            periodic_max = data.resample('1D').max()      
             
             anoms = _perform_threshold_filter(result_series, periodic_max, threshold, multithreaded)
 
@@ -625,6 +619,7 @@ def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only
 #	 one_tail: If TRUE only positive or negative going anomalies are detected depending on if upper_tail is TRUE or FALSE.
 #	 upper_tail: If TRUE and one_tail is also TRUE, detect only positive going (right-tailed) anomalies. If FALSE and one_tail is TRUE, only detect negative (left-tailed) anomalies.
 #	 verbose: Additionally printing for debugging.
+#    multithreaded: indicates if in single or multithreaded mode
 # Returns:
 #   A list containing the anomalies (anoms) and decomposition components (stl).
 
@@ -650,8 +645,9 @@ def _detect_anoms(a_series, k=0.49, alpha=0.05, num_obs_per_period=None,
     data, smoothed = _get_decomposed_data_tuple(a_series.pandas_series, num_obs_per_period)
 
     a_series.pandas_series = data
-
-    max_outliers = _get_max_outliers(a_series.pandas_series, k)
+    
+    # Update the max_outliers parameter
+    max_outliers = _get_max_outliers(a_series, k)
 
     R_idx = pd.Series()
 
@@ -693,26 +689,40 @@ def _detect_anoms(a_series, k=0.49, alpha=0.05, num_obs_per_period=None,
         'stl': smoothed
     }
 
-def _get_median(a_series, multithreaded=False):
-    if multithreaded:
-        return a_series.dask_series.median()
-    else:
-        return a_series.pandas_series.median()
+'''
+Encapsulates Pandas Series and, if multithreaded enabled, a Dask Series 
+representations of the input data
 
+'''
 class AnomalySeries():
     def __init__(self, pandas_series, dask_series=None):
         self.pandas_series = pandas_series
         self.dask_series = dask_series
     
+    '''
+    Indicates whether in multithreaded mode, meaning that the dask_series
+    instance attribute is not None
+    
+    '''
     def multithreaded_enabled(self):
         return self.dask_series is not None
     
+    '''
+    Returns the size of the encapsulated Series object, either Pandas (single threaded)
+    or Dask (multithreaded mode)
+    
+    '''
     def size(self):
         if self.multithreaded_enabled():
             return self.dask_series.size.compute()
         else:
             return self.pandas_series.size
 
+'''
+Encapsulates Pandas Series and, if multithreaded enabled, a Dask Series 
+representations of the input data
+
+'''
 class AnomalyResultSeries():
     def __init__(self, pandas_series, dask_series=None):
         self.pandas_series = pandas_series

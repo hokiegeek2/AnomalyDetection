@@ -25,7 +25,6 @@ class TestAnomalyDetection(unittest.TestCase):
     def dparserfunc(self, date):
         return pd.datetime.strptime(date, '%Y-%m-%d %H:%M:%S')
 
-
     def test_detect_anoms(self):
         shesd = _detect_anoms(self.a_series, k=0.02, alpha=0.05,
                                 num_obs_per_period=1440,
@@ -230,7 +229,6 @@ class TestAnomalyDetection(unittest.TestCase):
                                       only_last=None, longterm=False, multithreaded=True)
         self.assertEquals(132, len(results['anoms']))
 
-
     def test_invalid_data_parameter(self):
         with self.assertRaises(AssertionError): 
             anomaly_detect_ts(['invalid'], max_anoms=0.02,
@@ -264,7 +262,10 @@ class TestAnomalyDetection(unittest.TestCase):
         self.assertEquals(14398, len(raw_data))
         
     def test_get_max_outliers(self):
-        self.assertEquals(719, _get_max_outliers(self.data, 0.05))
+        self.assertEquals(719, _get_max_outliers(self.a_series, 0.05))
+        
+    def test_get_max_outliers_multithreaded(self):
+        self.assertEquals(719, _get_max_outliers(self.a_series_multithreaded, 0.05))
     
     def test_get_max_anoms(self):
         max_anoms = _get_max_anoms(self.data, 0.1)
@@ -276,7 +277,7 @@ class TestAnomalyDetection(unittest.TestCase):
         self.assertTrue(isinstance(smoothed_data, Series))
         self.assertEquals(14398, len(data))
         self.assertEquals(14398, len(smoothed_data))
-        
+         
     def test_perform_threshold_filter(self):
         results = anomaly_detect_ts(self.data, max_anoms=0.02, direction='both',
                                       only_last=None)
