@@ -283,8 +283,8 @@ Processes result set when longterm is set to true
   
   raw_data : Pandas or Dask Series
     input data set of (timestamp, float) in the form of a Series data structure
-  data : Series
-    processed data set of (timestamp, float) in the form of a Series data structure
+  a_series : AnomalySeries
+    AnomalyDetection object encapsulating Pandas Series and optionally Dask Series objects
   period : int
     the calculated or overridden period value
   granularity : string
@@ -294,33 +294,30 @@ Processes result set when longterm is set to true
   multithreaded : bool
     indicates if in single or multithreaded mode
 '''    
-def _process_long_term_data(raw_data, data, period, granularity, piecewise_median_period_weeks, multithreaded=False):
+def _process_long_term_data(raw_data, a_series, period, granularity, piecewise_median_period_weeks, multithreaded=False):
     # Pre-allocate list with size equal to the number of piecewise_median_period_weeks chunks in x + any left over chunk
     # handle edge cases for daily and single column data period lengths
     num_obs_in_period = period * piecewise_median_period_weeks + 1 if granularity == 'day' else period * 7 * piecewise_median_period_weeks
     num_days_in_period = (7 * piecewise_median_period_weeks) + 1 if granularity == 'day' else (7 * piecewise_median_period_weeks)
    
     all_data = []
-    
-    if multithreaded:
-        dask_series = _get_dask_series(data)
-    
+        
     # Subset x into piecewise_median_period_weeks chunks
-    for i in range(1, data.size + 1, num_obs_in_period):
-        start_date = data.index[i]
+    for i in range(1, a_series.pandas_series.size + 1, num_obs_in_period):
+        start_date = a_series.pandas_series.index[i]
         # if there is at least 14 days left, subset it, otherwise subset last_date - 14 days
         end_date = start_date + datetime.timedelta(days=num_days_in_period)
         
-        if end_date < data.index[-1]:
+        if end_date < a_series.pandas_series.index[-1]:
             if multithreaded:
-                all_data.append(_execute_series_lambda_function(lambda data: data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)], dask_series))
+                all_data.append(_execute_series_lambda_method(lambda data: data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)], a_series.dask_series))
             else:
-                all_data.append(_execute_series_lambda_function(data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)]))                
+                all_data.append(_execute_series_lambda_method(a_series.pandas_series.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)]))                
         else:
             if multithreaded:
-                all_data.append(_execute_series_lambda_function(lambda data: data.loc[lambda raw_data: raw_data.index >= data.index[-1] - datetime.timedelta(days=num_days_in_period)], dask_series))
+                all_data.append(_execute_series_lambda_method(lambda data: data.loc[lambda raw_data: raw_data.index >= data.index[-1] - datetime.timedelta(days=num_days_in_period)], a_series.dask_series))
             else:
-                all_data.append(_execute_series_lambda_function(data.loc[lambda raw_data: raw_data.index >= data.index[-1] - datetime.timedelta(days=num_days_in_period)]))                
+                all_data.append(_execute_series_lambda_method(a_series.pandas_series.loc[lambda raw_data: raw_data.index >= a_series.pandas_series.index[-1] - datetime.timedelta(days=num_days_in_period)]))                
     return all_data    
 
 '''
@@ -344,7 +341,7 @@ Executes a function on a Pandas or Dask Series object
     the Series to compute the lambda function for if in multithreaded mode
     
 '''
-def _execute_series_lambda_function(d_function, dask_series_object=None):
+def _execute_series_lambda_method(d_function, dask_series_object=None):
     if dask_series_object is not None:
         return _execute_dask_lambda_method(d_function, dask_series_object)
     else:
@@ -363,7 +360,7 @@ def _get_dask_series(p_series):
 '''
 Returns the results from the last day or hour only
 
-  data : Pandas or Dask Series
+  a_series : AnomalySeries
     input data set of (timestamp, float) in the form of a Series data structure
   all_anoms : Series
     all of the timestamp-anomaly tuples returned by the algorithm
@@ -374,37 +371,37 @@ Returns the results from the last day or hour only
   multithreaded : bool True | False
     indicates whether in standard or multithreaded mode
 '''
-def _get_only_last_results(data, all_anoms, granularity, only_last, multithreaded=False):
-    start_date = data.index[-1] - datetime.timedelta(days=7)
-    start_anoms = data.index[-1] - datetime.timedelta(days=1)
+def _get_only_last_results(a_series, all_anoms, granularity, only_last, multithreaded=False):
+    start_date = a_series.pandas_series.index[-1] - datetime.timedelta(days=7)
+    start_anoms = a_series.pandas_series.index[-1] - datetime.timedelta(days=1)
 
     if only_last == 'hr':
         # We need to change start_date and start_anoms for the hourly only_last option
-        start_date = datetime.datetime.combine((data.index[-1] - datetime.timedelta(days=2)).date(), datetime.time.min)
-        start_anoms = data.index[-1] - datetime.timedelta(hours=1)
+        start_date = datetime.datetime.combine((a_series.pandas_series.index[-1] - datetime.timedelta(days=2)).date(), datetime.time.min)
+        start_anoms = a_series.pandas_series.index[-1] - datetime.timedelta(hours=1)
 
     x_subset_single_day = None
 
     if multithreaded:
-        data_series = _get_dask_series(data)
         anom_series = _get_dask_series(all_anoms)
+    data = a_series.pandas_series
 
     # subset the last days worth of data
     if multithreaded:
-        x_subset_single_day = _execute_series_lambda_function(lambda data: data.loc[data.index > start_anoms], data_series)
+        x_subset_single_day = _execute_series_lambda_method(lambda data: data.loc[data.index > start_anoms], a_series.dask_series)
     else:
-        x_subset_single_day = _execute_series_lambda_function(data.loc[data.index > start_anoms])
+        x_subset_single_day = _execute_series_lambda_method(a_series.pandas_series.loc[a_series.pandas_series.index > start_anoms])
 
     # When plotting anoms for the last day only we only show the previous weeks data
     if multithreaded:
-        x_subset_week = _execute_series_lambda_function(lambda data: data.loc[lambda df: (df.index <= start_anoms) & (df.index > start_date)], data_series)
+        x_subset_week = _execute_series_lambda_method(lambda data: data.loc[lambda df: (df.index <= start_anoms) & (df.index > start_date)], a_series.dask_series)
     else:
-        x_subset_week = _execute_series_lambda_function(data.loc[lambda df: (df.index <= start_anoms) & (df.index > start_date)])        
+        x_subset_week = _execute_series_lambda_method(data.loc[lambda df: (df.index <= start_anoms) & (df.index > start_date)])        
 
     if multithreaded:
-        return _execute_series_lambda_function(lambda all_anoms: all_anoms.loc[all_anoms.index >= x_subset_single_day.index[0]], anom_series)
+        return _execute_series_lambda_method(lambda all_anoms: all_anoms.loc[all_anoms.index >= x_subset_single_day.index[0]], anom_series)
     else:        
-        return _execute_series_lambda_function(all_anoms.loc[all_anoms.index >= x_subset_single_day.index[0]])
+        return _execute_series_lambda_method(all_anoms.loc[all_anoms.index >= x_subset_single_day.index[0]])
 
 '''
 Generates the breaks used in plotting
@@ -427,8 +424,8 @@ def _get_plot_breaks(granularity, only_last):
 '''
 Filters the list of anomalies per the threshold filter
 
-  anoms : Pandas or Dask Series
-    the anoms returned by the algorithm in the form of a (timestamp, float) Series data structure
+  result_series : AnomalyResultSeries
+    encapsulates the anoms returned by the algorithm in the form of Pandas Series and, optionally, Dask Series objects
   periodic_max : Pandas or Dask Series
     calculated daily max value
   threshold : str med_max | p95 | p99
@@ -436,7 +433,7 @@ Filters the list of anomalies per the threshold filter
   multithreaded : bool True | False
     indicates whether in standard or multithreaded mode
 '''
-def _perform_threshold_filter(anoms, periodic_max, threshold, multithreaded=False):
+def _perform_threshold_filter(result_series, periodic_max, threshold, multithreaded=False):
     if threshold == 'med_max':
         thresh = periodic_max.median()
     elif threshold == 'p95':
@@ -447,9 +444,9 @@ def _perform_threshold_filter(anoms, periodic_max, threshold, multithreaded=Fals
         raise AttributeError('Invalid threshold, threshold options are None | med_max | p95 | p99')
 
     if multithreaded:
-        return _execute_series_lambda_function(lambda anoms: anoms.loc[anoms.values >= thresh], _get_dask_series(anoms))
+        return _execute_series_lambda_method(lambda anoms: anoms.loc[anoms.values >= thresh], result_series.dask_series)
     else:
-        return _execute_series_lambda_function(anoms.loc[anoms.values >= thresh]) 
+        return _execute_series_lambda_method(result_series.pandas_series.loc[result_series.pandas_series.values >= thresh]) 
 
 '''
 Calculates the max_outliers for an input data set
@@ -480,6 +477,42 @@ def _get_decomposed_data_tuple(data, num_obs_per_period):
     data = data - decomposed.seasonal - data.mean()    
     return (data, smoothed)
 
+'''
+Returns an instance of the AnomalySeries container object
+  pandas_series : Pandas Series
+    the input Pandas Series object passedc into the anomnaly_detect_ts method
+  multithreaded : bool
+    the Dask Series object will be None if multithreaded=False
+'''
+def _get_anomaly_series(pandas_series, multithreaded=False):
+    if multithreaded:
+        return AnomalySeries(pandas_series, _get_dask_series(pandas_series))
+    else:
+        return AnomalySeries(pandas_series)
+
+'''
+Returns an instance of the AnomalyResultSeries container object
+  pandas_series : Pandas Series
+    the result Pandas Series object
+  multithreaded : bool
+    the Dask Series object will be None if multithreaded=False
+'''
+def _get_anomaly_result_series(pandas_series, multithreaded=False):
+    if multithreaded:
+        return AnomalySeries(pandas_series, _get_dask_series(pandas_series))
+    else:
+        return AnomalySeries(pandas_series)
+
+'''
+
+'''
+def _get_periodic_max(a_series, multithreaded=False):
+    if multithreaded:
+        return a_series.dask_series.resample('1D').max().compute()
+    else:
+        return a_series.pandas_series.resample('1D').max()
+    
+
 def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only_last=None,
                       threshold=None, e_value=False, longterm=False, piecewise_median_period_weeks=2,
                       plot=False, y_log=False, xlabel="", ylabel="count", title='shesd output: ', verbose=False, 
@@ -505,7 +538,9 @@ def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only
     # TODO Allow raw_data.index to be number, here we can convert it to datetime
 
     data, period, granularity = _get_data_tuple(raw_data, period_override, resampling)
-       
+    
+    a_series = _get_anomaly_series(data, multithreaded)
+    
     if granularity is 'day':
         num_days_per_line = 7
         # TODO determine why this is here
@@ -515,7 +550,7 @@ def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only
     
     # If longterm is enabled, break the data into subset data frames and store in all_data
     if longterm:
-        all_data = _process_long_term_data(raw_data, data, period, granularity, piecewise_median_period_weeks, multithreaded)
+        all_data = _process_long_term_data(raw_data, a_series, period, granularity, piecewise_median_period_weeks, multithreaded)
     else:
         all_data = [data]
 
@@ -524,19 +559,25 @@ def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only
     
     # Detect anomalies on all data (either entire data in one-pass, or in 2 week blocks if longterm=True)
     for series in all_data:
-        shesd = _detect_anoms(series, k=max_anoms, alpha=alpha, num_obs_per_period=period, use_decomp=True, 
+        shesd = _detect_anoms(a_series, k=max_anoms, alpha=alpha, num_obs_per_period=period, use_decomp=True, 
                               use_esd=False, direction=direction, verbose=verbose, multithreaded=multithreaded)
         shesd_anoms = shesd['anoms']
         shesd_stl = shesd['stl']
 
         # -- Step 3: Use detected anomaly timestamps to extract the actual anomalies (timestamp and value) from the data
         anoms = pd.Series() if shesd_anoms.empty else series.loc[shesd_anoms.index]
-
+    
+        result_series = _get_anomaly_result_series(anoms, multithreaded)
+        
         # Filter the anomalies using one of the thresholding functions if applicable
         if threshold:
             # Calculate daily max values
-            periodic_max = data.resample('1D').max()
-            anoms = _perform_threshold_filter(anoms, periodic_max, threshold, multithreaded)
+            if multithreaded:
+                periodic_max = _get_periodic_max(a_series, multithreaded)  
+            else:
+                periodic_max = data.resample('1D').max()      
+            
+            anoms = _perform_threshold_filter(result_series, periodic_max, threshold, multithreaded)
 
         all_anoms = all_anoms.append(anoms)
         seasonal_plus_trend = seasonal_plus_trend.append(shesd_stl)
@@ -547,7 +588,7 @@ def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only
 
     # If only_last is specified, create a subset of the data corresponding to the most recent day or hour
     if only_last:
-        all_anoms = _get_only_last_results(data, all_anoms, granularity, only_last, multithreaded)
+        all_anoms = _get_only_last_results(a_series, all_anoms, granularity, only_last, multithreaded)
  
     # If there are no anoms, log it and return an empty anoms result
     if all_anoms.empty:
@@ -575,7 +616,7 @@ def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only
 # Detects anomalies in a time series using S-H-ESD.
 #
 # Args:
-#	 data: Time series to perform anomaly detection on.
+#	 a_series: AnomalyDetection object encapsulating Pandas Series and optionally Dask Series objects
 #	 k: Maximum number of anomalies that S-H-ESD will detect as a percentage of the data.
 #	 alpha: The level of statistical significance with which to accept or reject anomalies.
 #	 num_obs_per_period: Defines the number of observations in a single period, and used during seasonal decomposition.
@@ -587,14 +628,14 @@ def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only
 # Returns:
 #   A list containing the anomalies (anoms) and decomposition components (stl).
 
-def _detect_anoms(data, k=0.49, alpha=0.05, num_obs_per_period=None,
+def _detect_anoms(a_series, k=0.49, alpha=0.05, num_obs_per_period=None,
                   use_decomp=True, use_esd=False, direction="pos", verbose=False, multithreaded=False):
 
     # validation
     assert num_obs_per_period, "must supply period length for time series decomposition"
     assert direction in ['pos', 'neg', 'both'], 'direction options: pos | neg | both'
-    assert data.size >= num_obs_per_period * 2, 'Anomaly detection needs at least 2 periods worth of data'
-    assert data[data.isnull()].empty, 'Data contains NA. We suggest replacing NA with interpolated values before detecting anomaly'
+    assert a_series.pandas_series.size >= num_obs_per_period * 2, 'Anomaly detection needs at least 2 periods worth of data'
+    assert a_series.pandas_series[a_series.pandas_series.isnull()].empty, 'Data contains NA. We suggest replacing NA with interpolated values before detecting anomaly'
 
     # conversion
     one_tail = True if direction in ['pos', 'neg'] else False
@@ -606,13 +647,17 @@ def _detect_anoms(data, k=0.49, alpha=0.05, num_obs_per_period=None,
     #smoothed = data - decomposed.resid.fillna(0)
     #data = data - decomposed.seasonal - data.mean()
 
-    data, smoothed = _get_decomposed_data_tuple(data, num_obs_per_period)
+    data, smoothed = _get_decomposed_data_tuple(a_series.pandas_series, num_obs_per_period)
 
-    max_outliers = _get_max_outliers(data, k)
+    a_series.pandas_series = data
+
+    max_outliers = _get_max_outliers(a_series.pandas_series, k)
 
     R_idx = pd.Series()
 
-    n = data.size
+    #n = data.size
+    n = a_series.size()
+    
     # Compute test statistic until r=max_outliers values have been
     # removed from the sample.
     for i in range(1, max_outliers + 1):
@@ -647,3 +692,28 @@ def _detect_anoms(data, k=0.49, alpha=0.05, num_obs_per_period=None,
         'anoms': R_idx,
         'stl': smoothed
     }
+
+def _get_median(a_series, multithreaded=False):
+    if multithreaded:
+        return a_series.dask_series.median()
+    else:
+        return a_series.pandas_series.median()
+
+class AnomalySeries():
+    def __init__(self, pandas_series, dask_series=None):
+        self.pandas_series = pandas_series
+        self.dask_series = dask_series
+    
+    def multithreaded_enabled(self):
+        return self.dask_series is not None
+    
+    def size(self):
+        if self.multithreaded_enabled():
+            return self.dask_series.size.compute()
+        else:
+            return self.pandas_series.size
+
+class AnomalyResultSeries():
+    def __init__(self, pandas_series, dask_series=None):
+        self.pandas_series = pandas_series
+        self.dask_series = dask_series                      
