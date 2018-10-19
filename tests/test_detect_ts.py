@@ -88,7 +88,7 @@ class TestAnomalyDetection(unittest.TestCase):
                                       direction='both', alpha=0.02, max_anoms=0.02,
                                       plot=False, longterm=True)
         values = results['anoms'].get_values()
-        print(results['anoms'])
+       
         self.assertEquals(6, len(values))
         self.assertTrue(np.isin(self.get_test_value(677.306772096232), values))
         self.assertTrue(np.isin(self.get_test_value(3003.3770260296196), values))
@@ -102,7 +102,7 @@ class TestAnomalyDetection(unittest.TestCase):
                                       direction='both', alpha=0.02, max_anoms=0.02,
                                       plot=False, longterm=True)
         values = results['anoms'].get_values()
-        print(values)
+
         self.assertEquals(1, len(values))
         self.assertTrue(np.isin(self.get_test_value(-1449.62440286), values))
  
@@ -119,56 +119,56 @@ class TestAnomalyDetection(unittest.TestCase):
         self.assertTrue(np.isin(self.get_test_value(-1263.4494013677302), values))
  
     def test_detect_anoms(self):
-        shesd = _detect_anoms(self.a_series, k=0.02, alpha=0.05,
+        shesd = _detect_anoms(self.data1, k=0.02, alpha=0.05,
                                 num_obs_per_period=1440,
                                 use_decomp=True, use_esd=False,
                                 direction='both', verbose=False)
         self.assertEquals(133, len(shesd['anoms']))
         
     def test_detect_anoms_multithreaded(self):
-        shesd = _detect_anoms(self.a_series, k=0.02, alpha=0.05,
+        shesd = _detect_anoms(self.data1, k=0.02, alpha=0.05,
                                 num_obs_per_period=1440,
                                 use_decomp=True, use_esd=False,
                                 direction='both', verbose=False, multithreaded=True)
         self.assertEquals(133, len(shesd['anoms']))
         
     def test__detect_anoms_pos(self):
-        shesd = _detect_anoms(self.a_series, k=0.02, alpha=0.05,
+        shesd = _detect_anoms(self.data1, k=0.02, alpha=0.05,
                                 num_obs_per_period=1440,
                                 use_decomp=True, use_esd=False,
                                 direction='pos', verbose=False)
         self.assertEquals(50, len(shesd['anoms']))
         
     def test__detect_anoms_pos_multithreaded(self):
-        shesd = _detect_anoms(self.a_series, k=0.02, alpha=0.05,
+        shesd = _detect_anoms(self.data1, k=0.02, alpha=0.05,
                                 num_obs_per_period=1440,
                                 use_decomp=True, use_esd=False,
                                 direction='pos', verbose=False, multithreaded=True)
         self.assertEquals(50, len(shesd['anoms']))
 
     def test__detect_anoms_neg(self):
-        shesd = _detect_anoms(self.a_series, k=0.02, alpha=0.05,
+        shesd = _detect_anoms(self.data1, k=0.02, alpha=0.05,
                                 num_obs_per_period=1440,
                                 use_decomp=True, use_esd=False,
                                 direction='neg', verbose=False)
         self.assertEquals(85, len(shesd['anoms']))
         
     def test__detect_anoms_neg_multithreaded(self):
-        shesd = _detect_anoms(self.a_series, k=0.02, alpha=0.05,
+        shesd = _detect_anoms(self.data1, k=0.02, alpha=0.05,
                                 num_obs_per_period=1440,
                                 use_decomp=True, use_esd=False,
                                 direction='neg', verbose=False, multithreaded=True)
         self.assertEquals(85, len(shesd['anoms']))
 
     def test__detect_anoms_use_decomp_false(self):
-        shesd = _detect_anoms(self.a_series, k=0.02, alpha=0.05,
+        shesd = _detect_anoms(self.data1, k=0.02, alpha=0.05,
                                 num_obs_per_period=1440,
                                 use_decomp=False, use_esd=False,
                                 direction='both', verbose=False)
         self.assertEquals(133, len(shesd['anoms']))
         
     def test__detect_anoms_use_decomp_false_multithreaded(self):
-        shesd = _detect_anoms(self.a_series, k=0.02, alpha=0.05,
+        shesd = _detect_anoms(self.data1, k=0.02, alpha=0.05,
                                 num_obs_per_period=1440,
                                 use_decomp=False, use_esd=False,
                                 direction='both', verbose=False, multithreaded=True)
@@ -176,27 +176,27 @@ class TestAnomalyDetection(unittest.TestCase):
 
     def test__detect_anoms_no_num_obs_per_period(self):
         with self.assertRaises(AssertionError): 
-            _detect_anoms(self.a_series, k=0.02, alpha=0.05,
+            _detect_anoms(self.data1, k=0.02, alpha=0.05,
                             num_obs_per_period=None,
                             use_decomp=False, use_esd=False,
                             direction='both', verbose=False)
             
     def test__detect_anoms_no_num_obs_per_period_multithreaded(self):
         with self.assertRaises(AssertionError): 
-            _detect_anoms(self.a_series, k=0.02, alpha=0.05,
+            _detect_anoms(self.data1, k=0.02, alpha=0.05,
                             num_obs_per_period=None,
                             use_decomp=False, use_esd=False,
                             direction='both', verbose=False, multithreaded=True)
 
     def test__detect_anoms_use_esd_true(self):
-        shesd = _detect_anoms(self.a_series, k=0.02, alpha=0.05,
+        shesd = _detect_anoms(self.data1, k=0.02, alpha=0.05,
                                 num_obs_per_period=1440,
                                 use_decomp=True, use_esd=True,
                                 direction='both', verbose=False)
         self.assertEquals(133, len(shesd['anoms']))
         
     def test__detect_anoms_use_esd_true_multithreaded(self):
-        shesd = _detect_anoms(self.a_series, k=0.02, alpha=0.05,
+        shesd = _detect_anoms(self.data1, k=0.02, alpha=0.05,
                                 num_obs_per_period=1440,
                                 use_decomp=True, use_esd=True,
                                 direction='both', verbose=False, multithreaded=True)
@@ -371,10 +371,10 @@ class TestAnomalyDetection(unittest.TestCase):
         self.assertEquals(14398, len(raw_data))
         
     def test_get_max_outliers(self):
-        self.assertEquals(719, _get_max_outliers(self.a_series, 0.05))
+        self.assertEquals(719, _get_max_outliers(self.a_series.pandas_series, 0.05))
         
     def test_get_max_outliers_multithreaded(self):
-        self.assertEquals(719, _get_max_outliers(self.a_series_multithreaded, 0.05))
+        self.assertEquals(719, _get_max_outliers(self.a_series_multithreaded.pandas_series, 0.05))
    
     def test_get_max_anoms(self):
         max_anoms = _get_max_anoms(self.data1, 0.1)
@@ -391,7 +391,7 @@ class TestAnomalyDetection(unittest.TestCase):
         results = anomaly_detect_ts(self.data1, max_anoms=0.02, direction='both',
                                       only_last=None, plot=False)
         periodic_max = self.data1.resample('1D').max()
-        filtered_results = _perform_threshold_filter(results['anoms'], periodic_max, 'med_max')
+        filtered_results = _perform_threshold_filter(AnomalyResultSeries(results['anoms'], _get_dask_series(results['anoms'])), periodic_max, 'med_max')
         self.assertTrue(isinstance(filtered_results, pd.Series))
         self.assertEquals(4, len(filtered_results))
         
@@ -413,8 +413,8 @@ class TestAnomalyDetection(unittest.TestCase):
         results = anomaly_detect_ts(self.data1, max_anoms=0.02, direction='both', 
                                     only_last=None, plot=False)
 
-        last_day = _get_only_last_results(self.data1, results['anoms'], 'min', 'day')
-        last_hr = _get_only_last_results(self.data1, results['anoms'], 'min', 'hr')
+        last_day = _get_only_last_results(self.a_series, results['anoms'], 'min', 'day')
+        last_hr = _get_only_last_results(self.a_series, results['anoms'], 'min', 'hr')
         self.assertEquals(23, len(last_day))
         self.assertEquals(3, len(last_hr))
 

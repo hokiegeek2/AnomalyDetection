@@ -455,14 +455,14 @@ def _perform_threshold_filter(result_series, periodic_max, threshold, multithrea
 '''
 Calculates the max_outliers for an input data set
 
-  a_series : AnomalySeries
-    AnomalyDetection object encapsulating Pandas Series and optionally Dask Series objects
+  a_series : Pandas Series
+    Series object containing anomaly results
   max_percent_anomalies : float
     the input maximum number of anomalies per percent of data set values
     
 '''
 def _get_max_outliers(a_series, max_percent_anomalies):
-    data_size = a_series.size()
+    data_size = a_series.size
     max_outliers = int(np.trunc(data_size * max_percent_anomalies))
     assert max_outliers, 'With longterm=True, AnomalyDetection splits the data into 2 week periods by default. You have {0} observations in a period, which is too few. Set a higher piecewise_median_period_weeks.'.format(data_size)
     return max_outliers
@@ -470,8 +470,8 @@ def _get_max_outliers(a_series, max_percent_anomalies):
 '''
 Returns a tuple consisting of two versions of the input data set: seasonally-decomposed and smoothed
 
-  data : Pandas or Dask Series
-    the input data set in the form of a Series data structure
+  data : Pandas Series
+    the input data set in the form of a Pandas Series data structure
   num_obs_per_period : int
     the number of observations in each period
     
@@ -544,7 +544,7 @@ def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only
         only_last = 'day' if only_last == 'hr' else only_last
 
     max_anoms = _get_max_anoms(data, max_anoms)
-    
+ 
     # If longterm is enabled, break the data into subset data frames and store in all_data
     if longterm:
         all_data = _process_long_term_data(raw_data, a_series, period, granularity, piecewise_median_period_weeks, multithreaded)
@@ -556,7 +556,7 @@ def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only
     
     # Detect anomalies on all data (either entire data in one-pass, or in 2 week blocks if longterm=True)
     for series in all_data:
-        shesd = _detect_anoms(a_series, k=max_anoms, alpha=alpha, num_obs_per_period=period, use_decomp=True, 
+        shesd = _detect_anoms(series, k=max_anoms, alpha=alpha, num_obs_per_period=period, use_decomp=True, 
                               use_esd=False, direction=direction, verbose=verbose, multithreaded=multithreaded)
         shesd_anoms = shesd['anoms']
         shesd_stl = shesd['stl']
@@ -610,7 +610,7 @@ def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only
 # Detects anomalies in a time series using S-H-ESD.
 #
 # Args:
-#	 a_series: AnomalyDetection object encapsulating Pandas Series and optionally Dask Series objects
+#	 a_series: Pandas Series containing input values 
 #	 k: Maximum number of anomalies that S-H-ESD will detect as a percentage of the data.
 #	 alpha: The level of statistical significance with which to accept or reject anomalies.
 #	 num_obs_per_period: Defines the number of observations in a single period, and used during seasonal decomposition.
@@ -629,8 +629,8 @@ def _detect_anoms(a_series, k=0.49, alpha=0.05, num_obs_per_period=None,
     # validation
     assert num_obs_per_period, "must supply period length for time series decomposition"
     assert direction in ['pos', 'neg', 'both'], 'direction options: pos | neg | both'
-    assert a_series.pandas_series.size >= num_obs_per_period * 2, 'Anomaly detection needs at least 2 periods worth of data'
-    assert a_series.pandas_series[a_series.pandas_series.isnull()].empty, 'Data contains NA. We suggest replacing NA with interpolated values before detecting anomaly'
+    assert a_series.size >= num_obs_per_period * 2, 'Anomaly detection needs at least 2 periods worth of data'
+    assert a_series[a_series.isnull()].empty, 'Data contains NA. We suggest replacing NA with interpolated values before detecting anomaly'
 
     # conversion
     one_tail = True if direction in ['pos', 'neg'] else False
@@ -642,17 +642,15 @@ def _detect_anoms(a_series, k=0.49, alpha=0.05, num_obs_per_period=None,
     #smoothed = data - decomposed.resid.fillna(0)
     #data = data - decomposed.seasonal - data.mean()
 
-    data, smoothed = _get_decomposed_data_tuple(a_series.pandas_series, num_obs_per_period)
-
-    a_series.pandas_series = data
+    data, smoothed = _get_decomposed_data_tuple(a_series, num_obs_per_period)
     
     # Update the max_outliers parameter
-    max_outliers = _get_max_outliers(a_series, k)
+    max_outliers = _get_max_outliers(data, k)
 
     R_idx = pd.Series()
 
     #n = data.size
-    n = a_series.size()
+    n = data.size
     
     # Compute test statistic until r=max_outliers values have been
     # removed from the sample.
