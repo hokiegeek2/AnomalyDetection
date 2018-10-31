@@ -188,16 +188,18 @@ class TestAnomalyDetection(unittest.TestCase):
         values = results['anoms'].get_values()
 
         self.assertEquals(2, len(values))
-        # self.assertTrue(np.isin(self.get_test_value(-1449.62440286), values))
-        
+        self.assertTrue(np.isin(self.get_test_value(-1732.99186610059), values))
+        self.assertTrue(np.isin(self.get_test_value(-2221.8524475234804), values))
+       
     def test_anomaly_detect_ts_4_multithreaded(self):
         results = anomaly_detect_ts(self.data4,
                                       direction='both', alpha=0.02, max_anoms=0.02,
                                       plot=False, multithreaded=True)
         values = results['anoms'].get_values()
-
+        
         self.assertEquals(2, len(values))
-        # self.assertTrue(np.isin(self.get_test_value(-1449.62440286), values))
+        self.assertTrue(np.isin(self.get_test_value(-1732.99186610059), values))
+        self.assertTrue(np.isin(self.get_test_value(-2221.8524475234804), values))
     
     def test_anomaly_detect_ts_4_longterm_true(self):
         results = anomaly_detect_ts(self.data4,
@@ -227,8 +229,6 @@ class TestAnomalyDetection(unittest.TestCase):
         self.assertTrue(np.isin(self.get_test_value(-3355.47215640248), values))
         self.assertTrue(np.isin(self.get_test_value(941.905602754994), values))
         self.assertTrue(np.isin(self.get_test_value(-2428.98882200991), values)) 
-        # self.assertTrue(np.isin(self.get_test_value(-309.728284), values))
-        # self.assertTrue(np.isin(self.get_test_value(-138.43922997), values))
         
     def test_anomaly_detect_ts_5_multithreaded(self):
         results = anomaly_detect_ts(self.data5,
@@ -240,7 +240,6 @@ class TestAnomalyDetection(unittest.TestCase):
         self.assertTrue(np.isin(self.get_test_value(-3355.47215640248), values))
         self.assertTrue(np.isin(self.get_test_value(941.905602754994), values))
         self.assertTrue(np.isin(self.get_test_value(-2428.98882200991), values)) 
-        self.assertTrue(np.isin(self.get_test_value(-1263.4494013677302), values))
         
     def test_anomaly_detect_ts_5_longterm_true(self):
         results = anomaly_detect_ts(self.data5,

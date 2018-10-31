@@ -316,7 +316,7 @@ def _process_long_term_data(raw_data, a_series, period, granularity, piecewise_m
                 all_data.append(_execute_series_lambda_method(a_series.pandas_series.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)]))                
         else:
             if multithreaded:
-                all_data.append(_execute_series_lambda_method(lambda data: data.loc[lambda raw_data: raw_data.index >= data.index[-1] - datetime.timedelta(days=num_days_in_period)], a_series.dask_series))
+                all_data.append(_execute_series_lambda_method(lambda data: data.loc[lambda raw_data: raw_data.index >= a_series.pandas_series.index[-1] - datetime.timedelta(days=num_days_in_period)], a_series.dask_series))
             else:
                 all_data.append(_execute_series_lambda_method(a_series.pandas_series.loc[lambda raw_data: raw_data.index >= a_series.pandas_series.index[-1] - datetime.timedelta(days=num_days_in_period)]))                
     return all_data    
@@ -332,7 +332,7 @@ Dask DataFrame to the Dask DataFrame.map_partitions function
     
 '''
 def _execute_dask_lambda_method(d_function, dask_series):
-    return dask_series.map_partitions(d_function).compute()
+    return dask_series.map_partitions(d_function).compute(scheduler='processes')
 
 '''
 Executes a function on a Pandas or Dask Series object
