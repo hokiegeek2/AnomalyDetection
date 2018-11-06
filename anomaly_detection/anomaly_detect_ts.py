@@ -332,7 +332,7 @@ Dask DataFrame to the Dask DataFrame.map_partitions function
     
 '''
 def _execute_dask_lambda_method(d_function, dask_series):
-    return dask_series.map_partitions(d_function).compute(scheduler='processes')
+    return dask_series.map_partitions(d_function).compute(scheduler='threads')
 
 '''
 Executes a function on a Pandas or Dask Series object
@@ -485,7 +485,7 @@ def _get_decomposed_data_tuple(data, num_obs_per_period):
 '''
 Returns an instance of the AnomalySeries container object
   pandas_series : Pandas Series
-    the input Pandas Series object passedc into the anomnaly_detect_ts method
+    the input Pandas Series object passed into the anomaly_detect_ts method
   multithreaded : bool
     the Dask Series object will be None if multithreaded=False
     
