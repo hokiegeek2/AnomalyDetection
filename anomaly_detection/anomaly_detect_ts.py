@@ -143,10 +143,12 @@ import scipy as sp
 import pandas as pd
 from multiprocessing import cpu_count
 from dask import dataframe as ddf
+from dask.dataframe import Series as ds
 
 import datetime
 import statsmodels.api as sm
 import logging
+from asn1crypto.core import InstanceOf
 logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
 
 '''
@@ -311,6 +313,7 @@ def _process_long_term_data(raw_data, a_series, period, granularity, piecewise_m
         
         if end_date < a_series.pandas_series.index[-1]:
             if multithreaded:
+                boon = _execute_series_lambda_method(lambda data: data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)], a_series.dask_series)
                 all_data.append(_execute_series_lambda_method(lambda data: data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)], a_series.dask_series))
             else:
                 all_data.append(_execute_series_lambda_method(a_series.pandas_series.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)]))                
@@ -439,6 +442,9 @@ Filters the list of anomalies per the threshold filter
 '''
 def _perform_threshold_filter(result_series, periodic_max, threshold, multithreaded=False):
     if threshold == 'med_max':
+        # Dask Series does not support median() method, need to convert to Pandas Series
+        if type(periodic_max) == ds:
+            periodic_max = periodic_max.compute()
         thresh = periodic_max.median()
     elif threshold == 'p95':
         thresh = periodic_max.quantile(0.95)
@@ -510,6 +516,18 @@ def _get_anomaly_result_series(pandas_series, multithreaded=False):
     else:
         return AnomalySeries(pandas_series)
 
+'''
+Calculates the periodic_max value used when threshold=True by resampling to ID granularity and finding max
+  a_series : AnomalySeries
+    the AnomalySeries object
+  multithreaded : bool 
+'''
+def _calculate_periodic_max(a_series, multithreaded=False):
+    if multithreaded:
+        return a_series.dask_series.resample('1D').max()
+    else:
+        return a_series.pandas_series.resample('1D').max()
+
 def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only_last=None,
                       threshold=None, e_value=False, longterm=False, piecewise_median_period_weeks=2,
                       plot=False, y_log=False, xlabel="", ylabel="count", title='shesd output: ', verbose=False, 
@@ -569,7 +587,7 @@ def anomaly_detect_ts(raw_data, max_anoms=0.1, direction="pos", alpha=0.05, only
         # Filter the anomalies using one of the thresholding functions if applicable
         if threshold:
             # Calculate daily max values
-            periodic_max = data.resample('1D').max()      
+            periodic_max = _calculate_periodic_max(a_series, multithreaded)
             
             anoms = _perform_threshold_filter(result_series, periodic_max, threshold, multithreaded)
 
