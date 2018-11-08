@@ -1,8 +1,8 @@
 from setuptools import setup
 
 setup(
-    name="anomaly_detection",
+    name="streaming_anomaly_detection",
     packages=["anomaly_detection"],
-    version="0.0.2",
-    description="A python implementation of https://github.com/twitter/AnomalyDetection",
+    version="0.0.3",
+    description="A pure python implementation of https://github.com/twitter/AnomalyDetection",
 )
