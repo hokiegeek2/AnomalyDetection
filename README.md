@@ -41,8 +41,8 @@ multithreaded: whether to use multi-threaded Dask implementation of Series opera
 	The option enables the 	approach described in Vallis, Hochenbaum, and Kejariwal (2014).
  
 	"threshold" Filter all negative anomalies and those anomalies whose magnitude is smaller than one of the   
-	specified thresholds which include: the median of the daily max values (med_max), the 95th percentile of the   
-	daily max values (p95), and the 99th percentile of the daily max values (p99).
+	specified thresholds which include: the median of the daily max values (med_max), the 95th percentile 
+	of the daily max values (p95), and the 99th percentile of the daily max values (p99).
 
 # References
 
