@@ -2,6 +2,8 @@
 
 Twitter's streaming anomaly detection is easy to use and very powerful, but it's a R library. Although there are other python implementations, all of them contain R dependencies. This library is intended to provide a pure python port that provides the same functions as the original Twitter R implementation.
 
+This is a fork of the outstanding work of [Marcnuth](https://github.com/Marcnuth/AnomalyDetection). All updates with the exception of Dask integration have been pulled into Marcnuth's original github project.
+
 # Description
 
 The python port of the Twitter streaming time series anomaly detection is a technique for detecting anomalies in seasonal univariate time series where the input is a series of <timestamp, count> pairs.
@@ -53,6 +55,14 @@ multithreaded: whether to use multi-threaded Dask implementation of Series opera
      Rosner, B., (May 1983), "Percentage Points for a Generalized ESD
      Many-Outlier Procedure" , Technometrics, 25(2), pp. 165-172.
 
+# Installation
+```
+# Install dependent libraries
+pip install scipy pandas dask toolz cloudpickle statsmodels asn1crypto
+
+# Run setup from root AnomalyDetection project directory
+python3 setup.py install 
+```
 
 # Examples
 
