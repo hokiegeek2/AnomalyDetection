@@ -34,7 +34,15 @@ class TestAnomalyDetection(unittest.TestCase):
         
         self.data5 = pd.read_csv('test_data_5.csv', index_col='timestamp',
                        parse_dates=True, squeeze=True,
-                       date_parser=self.dparserfunc)        
+                       date_parser=self.dparserfunc)  
+        
+        self.data7 = pd.read_csv('test_data_7.csv', index_col='timestamp',
+                       parse_dates=True, squeeze=True,
+                       date_parser=self.dparserfunc)  
+            
+        self.data8 = pd.read_csv('test_data_8.csv', index_col='timestamp',
+                       parse_dates=True, squeeze=True,
+                       date_parser=self.dparserfunc)          
         
         self.a_series = AnomalySeries(self.data1) 
         self.a_series_multithreaded = AnomalySeries(self.data1, _get_dask_series(self.data1))  
@@ -619,9 +627,29 @@ class TestAnomalyDetection(unittest.TestCase):
         last_hr = _get_only_last_results(self.a_series, results['anoms'], 'min', 'hr')
         self.assertEquals(6, len(last_day))
         self.assertEquals(6, len(last_hr))
-    
+   
     def test_get_period(self):
         self.assertEquals(1440, _get_period(1440, None))
         
     def test_get_period_with_override(self):
         self.assertEquals(720, _get_period(1440, 720))
+        
+    def test_get_data_tuple_sec_granularity(self):        
+        data_tuple = _get_data_tuple(self.data7, period_override=678)
+        self.assertEquals(1357, len(data_tuple[0]))
+        self.assertEquals(678, data_tuple[1])
+        self.assertEquals('sec', data_tuple[2])
+
+    def test_get_data_tuple_resample_to_min(self):
+        data_tuple = _get_data_tuple(self.data7, period_override=670, resampling=True)
+        self.assertEquals(24, len(data_tuple[0]))
+        self.assertEquals(670, data_tuple[1])
+        
+    def test_get_data_tuple_ms_granularity(self):
+        with self.assertRaises(ValueError):
+            _get_data_tuple(self.data8, period_override=670)
+            
+    def test_get_data_tuple_ms_granularity_resample_to_min(self):
+        data_tuple = _get_data_tuple(self.data8, period_override=670, resampling=True)
+        self.assertEquals(841, len(data_tuple[0]))
+        self.assertEquals(670, data_tuple[1])

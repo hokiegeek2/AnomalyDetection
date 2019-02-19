@@ -148,7 +148,6 @@ from dask.dataframe import Series as ds
 import datetime
 import statsmodels.api as sm
 import logging
-from asn1crypto.core import InstanceOf
 logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
 
 '''
@@ -231,17 +230,16 @@ def _get_data_tuple(raw_data, period_override, resampling=False):
         period = _get_period(1440, period_override)
     elif timediff.seconds > 0:
         granularity = 'sec'
-    elif timediff.seconds > 0:
-        granularity = 'sec'
         
         '''
            Aggregate data to minute level of granularity if data stream granularity is sec and
            resampling=True. If resampling=False, raise ValueError
         '''      
         if resampling is True:
-            period = _resample_to_min(data, period_override)
+            data, period = _resample_to_min(data, period_override)
+            granularity = 'min'
         else:
-            _handle_granularity_error('sec')
+            period = _get_period(86400, period_override)
     else:
         '''
            Aggregate data to minute level of granularity if data stream granularity is ms and
