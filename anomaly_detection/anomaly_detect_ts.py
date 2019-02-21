@@ -233,7 +233,7 @@ def _get_data_tuple(raw_data, period_override, resampling=False):
         
         '''
            Aggregate data to minute level of granularity if data stream granularity is sec and
-           resampling=True. If resampling=False, raise ValueError
+           resampling=True. If resampling=False, adjust period to sec level of granularity.
         '''      
         if resampling is True:
             data, period = _resample_to_min(data, period_override)
