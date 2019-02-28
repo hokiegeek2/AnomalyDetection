@@ -57,9 +57,6 @@ multithreaded: whether to use multi-threaded Dask implementation of Series opera
 
 # Installation
 ```
-# Install dependent libraries
-pip install scipy pandas dask toolz cloudpickle statsmodels asn1crypto
-
 # Run setup from root AnomalyDetection project directory
 python3 setup.py install 
 ```
