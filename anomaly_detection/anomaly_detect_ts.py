@@ -141,6 +141,7 @@ Examples:
 import numpy as np
 import scipy as sp
 import pandas as pd
+from pandas import Series
 from multiprocessing import cpu_count
 from dask import dataframe as ddf
 from dask.dataframe import Series as ds
@@ -150,6 +151,7 @@ import statsmodels.api as sm
 import logging
 from asn1crypto.core import InstanceOf
 logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
+from typing import Tuple
 
 '''
 Raises ValueError with detailed error message if one of the two situations is true:
@@ -173,13 +175,13 @@ Resamples a data set to the min level of granularity
     indicates whether resampling should be done with overridden value instead of min (1440)
     
 '''
-def _resample_to_min(data, period_override=None):    
+def _resample_to_min(data, period_override=None) -> Tuple[Series,int]:    
     data = data.resample('60s', label='right').sum()
     if _override_period(period_override):
         period = period_override
     else:
         period = 1440
-    return (data, period)
+    return data, period
 
 '''
 Indicates whether period can be overridden if the period derived from granularity does
@@ -231,15 +233,12 @@ def _get_data_tuple(raw_data, period_override, resampling=False):
         period = _get_period(1440, period_override)
     elif timediff.seconds > 0:
         granularity = 'sec'
-    elif timediff.seconds > 0:
-        granularity = 'sec'
-        
         '''
            Aggregate data to minute level of granularity if data stream granularity is sec and
            resampling=True. If resampling=False, raise ValueError
         '''      
         if resampling is True:
-            period = _resample_to_min(data, period_override)
+            data, period = _resample_to_min(data, period_override)
         else:
             _handle_granularity_error('sec')
     else:
@@ -313,7 +312,6 @@ def _process_long_term_data(raw_data, a_series, period, granularity, piecewise_m
         
         if end_date < a_series.pandas_series.index[-1]:
             if multithreaded:
-                boon = _execute_series_lambda_method(lambda data: data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)], a_series.dask_series)
                 all_data.append(_execute_series_lambda_method(lambda data: data.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)], a_series.dask_series))
             else:
                 all_data.append(_execute_series_lambda_method(a_series.pandas_series.loc[lambda raw_data: (raw_data.index >= start_date) & (raw_data.index <= end_date)]))                

@@ -34,6 +34,12 @@ class TestAnomalyDetection(unittest.TestCase):
         
         self.data5 = pd.read_csv('test_data_5.csv', index_col='timestamp',
                        parse_dates=True, squeeze=True,
+                       date_parser=self.dparserfunc)
+        self.data_seconds_granularity = pd.read_csv('test_data_seconds_granularity.csv', 
+                       index_col='timestamp', parse_dates=True, squeeze=True,
+                       date_parser=self.dparserfunc)      
+        self.data_minutes_granularity = pd.read_csv('test_data_minutes_granularity.csv', 
+                       index_col='timestamp', parse_dates=True, squeeze=True,
                        date_parser=self.dparserfunc)        
         
         self.a_series = AnomalySeries(self.data1) 
@@ -44,6 +50,15 @@ class TestAnomalyDetection(unittest.TestCase):
       
     def dparserfunc(self, date):
         return pd.datetime.strptime(date, '%Y-%m-%d %H:%M:%S')
+
+    def test_anomaly_detection_minutes_granularity(self):
+        results = anomaly_detect_ts(self.data_minutes_granularity,
+                        direction='both', alpha=0.05, period_override=60,
+                                      plot=False, longterm=True)
+        values = results['anoms'].get_values()
+        self.assertEqual(2, len(values))
+        self.assertEqual(96,values[0])
+        self.assertEqual(97,values[1])
 
     def test_anomaly_detect_ts_1(self):
         results = anomaly_detect_ts(self.data1,
@@ -104,7 +119,7 @@ class TestAnomalyDetection(unittest.TestCase):
     def test_anomaly_detect_ts_2(self):
         results = anomaly_detect_ts(self.data2,
                                       direction='both', alpha=0.02, max_anoms=0.02,
-                                      plot=False)
+                                      plot=False, period_override=840)
         values = results['anoms'].get_values()   
         
         self.assertEquals(0, len(values))
